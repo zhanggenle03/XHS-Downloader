@@ -1,6 +1,6 @@
-from textual import on
 from textual.app import ComposeResult
-from textual.containers import Grid
+from textual.binding import Binding
+from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, LoadingIndicator
 
@@ -10,20 +10,25 @@ __all__ = ["Loading"]
 
 
 class Loading(ModalScreen):
-    def __init__(
-        self,
-    ):
+    BINDINGS = [
+        Binding("escape", "cancel_task", _("取消任务")),
+    ]
+
+    def __init__(self):
         super().__init__()
 
     def compose(self) -> ComposeResult:
-        yield Grid(
+        yield Vertical(
             Label(_("程序处理中...")),
             LoadingIndicator(),
             Button(_("取消"), id="cancel", variant="error"),
             classes="loading",
         )
 
-    @on(Button.Pressed, "#cancel")
-    def cancel_action(self):
+    async def on_button_pressed(self, event: Button.Pressed):
+        if event.button.id == "cancel":
+            self.action_cancel_task()
+
+    def action_cancel_task(self):
         self.app.APP.cancel_task()
         self.app.pop_screen()
