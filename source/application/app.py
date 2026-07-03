@@ -341,14 +341,15 @@ class XHS:
         self,
         count: SimpleNamespace,
         id_: str,
+        url: str,
         status: str,
         reason: str = "",
     ) -> None:
-        """记录早期退出（跳过/失败）的作品结果，仅有作品ID"""
+        """记录早期退出（跳过/失败）的作品结果，含作品ID和链接"""
         count.results.append(
             {
                 "作品ID": id_,
-                "作品链接": "",
+                "作品链接": url,
                 "作品类型": "",
                 "作品标题": "",
                 "作品描述": "",
@@ -502,7 +503,6 @@ class XHS:
             msg = _("作品 {0} 存在下载记录，跳过处理").format(id_)
             self.logging(msg)
             count.skip += 1
-            self._record_result(count, id_, "跳过", msg)
             return id_, {"message": msg}
         self.logging(_("开始处理作品：{0}").format(id_))
         html = await self.html.request_url(
@@ -515,7 +515,6 @@ class XHS:
             msg = _("{0} 获取数据失败").format(id_)
             self.logging(msg, ERROR)
             count.fail += 1
-            self._record_result(count, id_, "失败", msg)
             return id_, {}
         return id_, namespace
 
@@ -530,7 +529,6 @@ class XHS:
             msg = _("{0} 提取数据失败").format(id_)
             self.logging(msg, ERROR)
             count.fail += 1
-            self._record_result(count, id_, "失败", msg)
             return {}
         return data
 
@@ -589,6 +587,12 @@ class XHS:
             count,
         )
         if not isinstance(namespace, Namespace):
+            if isinstance(namespace, dict) and namespace:
+                self._record_result(
+                    count, id_, url, "跳过", namespace.get("message", "")
+                )
+            else:
+                self._record_result(count, id_, url, "失败", "")
             return namespace
         if not (
             data := self._extract_data(
@@ -597,6 +601,9 @@ class XHS:
                 count,
             )
         ):
+            self._record_result(
+                count, id_, url, "失败", _("{0} 提取数据失败").format(id_)
+            )
             return data
         data = await self._deal_download_tasks(
             data
