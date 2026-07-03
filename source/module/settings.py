@@ -34,6 +34,7 @@ class Settings:
         "write_mtime": False,  # 是否写入修改时间
         "language": "zh_CN",  # 语言设置
         "script_server": False,  # 是否启用脚本服务器
+        "max_consecutive_failures": 5,  # 连续失败终止阈值，0为不限制
     }
     # 根据操作系统设置编码格式
     encode = "UTF-8-SIG" if system() == "Windows" else "UTF-8"

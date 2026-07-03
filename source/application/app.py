@@ -130,6 +130,7 @@ class XHS:
         timeout=10,
         chunk=1024 * 1024,
         max_retry=5,
+        max_consecutive_failures=5,
         record_data=False,
         image_format="JPEG",
         image_download=True,
@@ -196,6 +197,9 @@ class XHS:
             script_host,
             script_port,
         )
+        self.max_consecutive_failures = max_consecutive_failures
+        self._cancel_event = Event()
+        self._cancel_event.clear()
 
     def __extract_image(self, container: dict, data: Namespace):
         container["下载地址"], container["动图地址"] = self.image.get_image_link(
@@ -303,12 +307,17 @@ class XHS:
             success=0,
             fail=0,
             skip=0,
+            consecutive_failures=0,
             results=[],
         )
         self.logging(_("共 {0} 个小红书作品待处理...").format(total))
         result = []
         for i, url_ in enumerate(urls, start=1):
+            if self._cancel_event.is_set():
+                self.logging(_("用户已取消任务"), WARNING)
+                break
             self.logging(_("[{0}/{1}] 处理第 {0} 个作品...").format(i, total))
+            fail_before = statistics.fail
             result.append(
                 await self.__deal_extract(
                     url_,
@@ -317,6 +326,26 @@ class XHS:
                     data,
                     count=statistics,
                 )
+            )
+            if statistics.fail > fail_before:
+                statistics.consecutive_failures += 1
+            else:
+                statistics.consecutive_failures = 0
+            limit = self.max_consecutive_failures
+            if limit > 0 and statistics.consecutive_failures >= limit:
+                self.logging(
+                    _("连续 {0} 个作品失败，自动终止任务").format(limit),
+                    WARNING,
+                )
+                break
+        processed = len(statistics.results)
+        for url_ in urls[processed:]:
+            self._record_result(
+                statistics,
+                self.__extract_link_id(url_),
+                url_,
+                "终止",
+                _("任务已终止，未处理"),
             )
         self.show_statistics(
             statistics,
@@ -409,6 +438,10 @@ class XHS:
             writer.writerows(results)
         self.logging(_("任务详情已导出至：{0}").format(filepath))
 
+    def cancel_task(self):
+        """请求取消当前运行的任务"""
+        self._cancel_event.set()
+
     async def extract_cli(
         self,
         url: str,
@@ -436,16 +469,41 @@ class XHS:
                 success=0,
                 fail=0,
                 skip=0,
+                consecutive_failures=0,
                 results=[],
             )
             for i, u in enumerate(url, start=1):
+                if self._cancel_event.is_set():
+                    self.logging(_("用户已取消任务"), WARNING)
+                    break
                 self.logging(_("[{0}/{1}] 处理第 {0} 个作品...").format(i, total))
+                fail_before = statistics.fail
                 await self.__deal_extract(
                     u,
                     download,
                     index,
                     data,
                     count=statistics,
+                )
+                if statistics.fail > fail_before:
+                    statistics.consecutive_failures += 1
+                else:
+                    statistics.consecutive_failures = 0
+                limit = self.max_consecutive_failures
+                if limit > 0 and statistics.consecutive_failures >= limit:
+                    self.logging(
+                        _("连续 {0} 个作品失败，自动终止任务").format(limit),
+                        WARNING,
+                    )
+                    break
+            processed = len(statistics.results)
+            for u in url[processed:]:
+                self._record_result(
+                    statistics,
+                    self.__extract_link_id(u),
+                    u,
+                    "终止",
+                    _("任务已终止，未处理"),
                 )
             self.show_statistics(
                 statistics,

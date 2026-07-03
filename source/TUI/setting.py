@@ -114,6 +114,16 @@ class Setting(Screen):
                 type="integer",
                 id="max_retry",
             ),
+            Label(
+                _("连续失败自动终止阈值，0 为不限制"),
+                classes="params",
+            ),
+            Input(
+                str(self.data["max_consecutive_failures"]),
+                placeholder="5",
+                type="integer",
+                id="max_consecutive_failures",
+            ),
             Label(),
             Container(
                 Checkbox(
@@ -244,6 +254,7 @@ class Setting(Screen):
                 "timeout": int(self.query_one("#timeout").value),
                 "chunk": int(self.query_one("#chunk").value),
                 "max_retry": int(self.query_one("#max_retry").value),
+                "max_consecutive_failures": int(self.query_one("#max_consecutive_failures").value),
                 "record_data": self.query_one("#record_data").value,
                 "image_format": self.query_one("#image_format").value.lower(),
                 "folder_mode": self.query_one("#folder_mode").value,
