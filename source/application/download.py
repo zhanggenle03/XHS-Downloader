@@ -98,6 +98,7 @@ class Download:
             )
         else:
             raise ValueError
+        file_total = len(tasks)
         tasks = [
             self.__download(
                 url,
@@ -105,8 +106,10 @@ class Download:
                 name,
                 format_,
                 mtime,
+                file_idx,
+                file_total,
             )
-            for url, name, format_ in tasks
+            for file_idx, (url, name, format_) in enumerate(tasks, start=1)
         ]
         tasks = await gather(*tasks)
         return path, tasks  # 未解之谜
@@ -201,6 +204,8 @@ class Download:
         name: str,
         format_: str,
         mtime: int,
+        file_idx: int = 0,
+        file_total: int = 0,
     ):
         async with self.SEMAPHORE:
             headers = self.headers.copy()
@@ -208,6 +213,13 @@ class Download:
             self.__update_headers_range(
                 headers,
                 temp,
+            )
+            progress_tag = f"({file_idx}/{file_total})" if file_total else ""
+            logging(
+                self.print,
+                _("文件 {0} 正在下载 {1}").format(
+                    f"{name}.{format_}", progress_tag
+                ),
             )
             try:
                 async with self.client.stream(
@@ -245,14 +257,14 @@ class Download:
                     self.write_mtime,
                 )
                 # self.__create_progress(bar, None)
-                logging(self.print, _("文件 {0} 下载成功").format(real.name))
+                logging(self.print, _("文件 {0} 下载成功 {1}").format(real.name, progress_tag))
                 return True
             except HTTPError as error:
                 # self.__create_progress(bar, None)
                 logging(
                     self.print,
-                    _("网络异常，{0} 下载失败，错误信息: {1}").format(
-                        name, repr(error)
+                    _("网络异常，{0} 下载失败，错误信息: {1} {2}").format(
+                        name, repr(error), progress_tag
                     ),
                     ERROR,
                 )
@@ -261,7 +273,7 @@ class Download:
                 self.manager.delete(temp)
                 logging(
                     self.print,
-                    str(error),
+                    _("缓存异常，{0} {1}").format(str(error), progress_tag),
                     ERROR,
                 )
                 return False

@@ -284,23 +284,26 @@ class XHS:
         ):
             self.logging(_("提取小红书作品链接失败"), WARNING)
             return []
+        total = len(urls)
         statistics = SimpleNamespace(
-            all=len(urls),
+            all=total,
             success=0,
             fail=0,
             skip=0,
         )
-        self.logging(_("共 {0} 个小红书作品待处理...").format(statistics.all))
-        result = [
-            await self.__deal_extract(
-                i,
-                download,
-                index,
-                data,
-                count=statistics,
+        self.logging(_("共 {0} 个小红书作品待处理...").format(total))
+        result = []
+        for i, url_ in enumerate(urls, start=1):
+            self.logging(_("[{0}/{1}] 处理第 {0} 个作品...").format(i, total))
+            result.append(
+                await self.__deal_extract(
+                    url_,
+                    download,
+                    index,
+                    data,
+                    count=statistics,
+                )
             )
-            for i in urls
-        ]
         self.show_statistics(
             statistics,
         )
@@ -340,13 +343,15 @@ class XHS:
                 data,
             )
         else:
+            total = len(url)
             statistics = SimpleNamespace(
-                all=len(url),
+                all=total,
                 success=0,
                 fail=0,
                 skip=0,
             )
-            [
+            for i, u in enumerate(url, start=1):
+                self.logging(_("[{0}/{1}] 处理第 {0} 个作品...").format(i, total))
                 await self.__deal_extract(
                     u,
                     download,
@@ -354,8 +359,6 @@ class XHS:
                     data,
                     count=statistics,
                 )
-                for u in url
-            ]
             self.show_statistics(
                 statistics,
             )
