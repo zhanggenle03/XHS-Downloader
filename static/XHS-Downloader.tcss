@@ -35,17 +35,11 @@ Label.prompt {
     padding: 1;
 }
 .loading {
-    grid-size: 1 3;
+    grid-size: 1 2;
     grid-gutter: 1;
     width: 40vw;
-    height: 10;
+    height: 5;
     border: double $primary;
-}
-LoadingIndicator {
-    height: 3;
-}
-Button#cancel {
-    color: $error;
 }
 #record {
     grid-size: 1 3;
