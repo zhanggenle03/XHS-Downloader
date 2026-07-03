@@ -225,8 +225,10 @@ class XHS:
         name = self.__naming_rules(container)
         if (u := container["下载地址"]) and download:
             if await self.skip_download(i := container["作品ID"]):
-                self.logging(_("作品 {0} 存在下载记录，跳过下载").format(i))
+                msg = _("作品 {0} 存在下载记录，跳过下载").format(i)
+                self.logging(msg)
                 count.skip += 1
+                self.__record_download_result(count, container, "跳过", msg)
             else:
                 __, result = await self.download.run(
                     u,
@@ -240,17 +242,28 @@ class XHS:
                     container["时间戳"],
                 )
                 if not result:
+                    msg = _("作品 {0} 所有文件已存在，无需下载").format(i)
                     count.skip += 1
+                    self.__record_download_result(count, container, "跳过", msg)
                 elif all(result):
                     count.success += 1
+                    self.__record_download_result(count, container, "成功", "")
                     await self.__add_record(
                         i,
                     )
                 else:
+                    msg = _("作品 {0} 部分文件下载失败").format(i)
                     count.fail += 1
+                    self.__record_download_result(count, container, "失败", msg)
         elif not u:
-            self.logging(_("提取作品文件下载地址失败"), ERROR)
+            msg = _("提取作品文件下载地址失败")
+            self.logging(msg, ERROR)
             count.fail += 1
+            self.__record_download_result(
+                count, container, "失败", msg
+            )
+        elif not download:
+            self.__record_download_result(count, container, "成功", "")
         await self.save_data(container)
 
     @data_cache
@@ -290,6 +303,7 @@ class XHS:
             success=0,
             fail=0,
             skip=0,
+            results=[],
         )
         self.logging(_("共 {0} 个小红书作品待处理...").format(total))
         result = []
@@ -307,6 +321,7 @@ class XHS:
         self.show_statistics(
             statistics,
         )
+        await self.export_task_csv(statistics.results)
         return result
 
     def show_statistics(
@@ -321,6 +336,77 @@ class XHS:
                 statistics.skip,
             ),
         )
+
+    def _record_result(
+        self,
+        count: SimpleNamespace,
+        id_: str,
+        status: str,
+        reason: str = "",
+    ) -> None:
+        """记录早期退出（跳过/失败）的作品结果，仅有作品ID"""
+        count.results.append(
+            {
+                "作品ID": id_,
+                "作品链接": "",
+                "作品类型": "",
+                "作品标题": "",
+                "作品描述": "",
+                "作者昵称": "",
+                "状态": status,
+                "原因": reason,
+            }
+        )
+
+    def __record_download_result(
+        self,
+        count: SimpleNamespace,
+        container: dict,
+        status: str,
+        reason: str = "",
+    ) -> None:
+        """记录下载完成后作品的处理结果，含完整作品信息"""
+        count.results.append(
+            {
+                "作品ID": container.get("作品ID", ""),
+                "作品链接": container.get("作品链接", ""),
+                "作品类型": container.get("作品类型", ""),
+                "作品标题": container.get("作品标题", ""),
+                "作品描述": container.get("作品描述", ""),
+                "作者昵称": container.get("作者昵称", ""),
+                "状态": status,
+                "原因": reason,
+            }
+        )
+
+    async def export_task_csv(
+        self,
+        results: list[dict],
+    ) -> None:
+        """将本次任务处理结果导出为 CSV 文件"""
+        if not results:
+            return
+        import csv
+
+        filename = "TaskResult_{0}.csv".format(
+            datetime.now().strftime("%Y%m%d_%H%M%S")
+        )
+        filepath = self.manager.folder.joinpath(filename)
+        fieldnames = [
+            "作品ID",
+            "作品链接",
+            "作品类型",
+            "作品标题",
+            "作品描述",
+            "作者昵称",
+            "状态",
+            "原因",
+        ]
+        with open(filepath, "w", encoding="utf-8-sig", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(results)
+        self.logging(_("任务详情已导出至：{0}").format(filepath))
 
     async def extract_cli(
         self,
@@ -349,6 +435,7 @@ class XHS:
                 success=0,
                 fail=0,
                 skip=0,
+                results=[],
             )
             for i, u in enumerate(url, start=1):
                 self.logging(_("[{0}/{1}] 处理第 {0} 个作品...").format(i, total))
@@ -362,6 +449,7 @@ class XHS:
             self.show_statistics(
                 statistics,
             )
+            await self.export_task_csv(statistics.results)
 
     async def extract_links(
         self,
@@ -414,6 +502,7 @@ class XHS:
             msg = _("作品 {0} 存在下载记录，跳过处理").format(id_)
             self.logging(msg)
             count.skip += 1
+            self._record_result(count, id_, "跳过", msg)
             return id_, {"message": msg}
         self.logging(_("开始处理作品：{0}").format(id_))
         html = await self.html.request_url(
@@ -423,8 +512,10 @@ class XHS:
         )
         namespace = self.__generate_data_object(html)
         if not namespace:
-            self.logging(_("{0} 获取数据失败").format(id_), ERROR)
+            msg = _("{0} 获取数据失败").format(id_)
+            self.logging(msg, ERROR)
             count.fail += 1
+            self._record_result(count, id_, "失败", msg)
             return id_, {}
         return id_, namespace
 
@@ -436,8 +527,10 @@ class XHS:
     ):
         data = self.explore.run(namespace)
         if not data:
-            self.logging(_("{0} 提取数据失败").format(id_), ERROR)
+            msg = _("{0} 提取数据失败").format(id_)
+            self.logging(msg, ERROR)
             count.fail += 1
+            self._record_result(count, id_, "失败", msg)
             return {}
         return data
 
